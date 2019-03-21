@@ -1,0 +1,170 @@
+---
+title: "Fish Size Histograms"
+author: "Colby Hause"
+date: "May 8, 2018"
+output: word_document 
+---
+Files
+```{r warning=FALSE, message=FALSE}
+library(tidyverse)
+library(tibble)
+library(readr)
+
+allfish_2017 <- read_csv("//metro-klimley1.ou.ad3.ucdavis.edu/klimley/Shared/Projects/JSATS/DSP_Spring-Run Salmon/2018/2018Analysis/Fish Size Histos/2017allfish.csv")
+
+grouped <- read_csv("//metro-klimley1.ou.ad3.ucdavis.edu/klimley/Shared/Projects/JSATS/DSP_Spring-Run Salmon/2018/2018Analysis/Fish Size Histos/2017Scarf_Sirf.csv")
+
+
+us_ds <- read_csv("//metro-klimley1.ou.ad3.ucdavis.edu/klimley/Shared/Projects/JSATS/DSP_Spring-Run Salmon/2018/2018Analysis/Fish Size Histos/upstream_downstream.csv")
+
+
+## Normal Histograms
+
+scarf_hist <- allfish_2017 %>% 
+ filter(group == "SCARF1" | group == "SCARF2")
+
+sirf_hist <- allfish_2017 %>% 
+  filter(group == "SIRF1" | group == "SIRF2")
+
+ggplot(data = scarf_hist, aes(x = length)) +
+  geom_freqpoly()
+
+ggplot(data = sirf_hist, aes(x = length)) +
+  geom_freqpoly()
+
+
+```
+
+Fork Length in Scarf1 vs Scarf2 fish: 
+```{r}
+
+scarf_den <- allfish_2017 %>% 
+  filter(group == "SCARF1" | group== "SCARF2") %>% 
+  select(group, length)
+
+ggplot(data = scarf_den, aes(x = length, fill = group)) +
+  geom_density(alpha = .2)+
+   theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  xlab("Length (mm)")
+
+sirf_den <- allfish_2017 %>% 
+  filter(group == "SIRF1" | group == "SIRF2") %>% 
+  select(group, length)
+  
+ggplot(data = sirf_den, aes(x = length, fill = group)) +
+  geom_density(alpha = .2)+
+   theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  xlab("Length (mm)")
+
+```
+
+Fork Length in Upstream vs Downstream: 
+```{r}
+
+ggplot(data = us_ds, aes(length, fill = group)) +
+  geom_density(alpha=.2) +
+  scale_fill_manual(values=c("green","blue")) +
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  xlab("Length (mm)")
+
+
+```
+
+Fork Length in Scarf vs Sirf fish
+```{r}
+ggplot(data = grouped, aes(x = length, fill = group)) +
+  geom_density(alpha=.2) +
+  scale_fill_manual(values=c("green","blue"))+ 
+  theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  xlab("Length (mm)")
+
+
+```
+
+Distribution of all groups 
+```{r}
+
+ggplot(data = allfish_2017, aes(x = length, fill = group)) +
+  geom_density(alpha=.2)+
+   theme_bw()+
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  xlab("Length (mm)")
+
+```
+
+
+Stats:
+```{r}
+#scarf 1 vs 2 stats
+
+#scarf 1 vector:
+scarf1length <-  allfish_2017 %>% 
+  filter(group == "SCARF1") %>% 
+  select(length)
+
+
+scarf1_vector<- scarf1length[[1]]
+
+# scarf 2 vector
+scarf2length <-  allfish_2017 %>% 
+  filter(group == "SCARF2") %>% 
+  select(length)
+
+scarf2_vector <- scarf2length[[1]]
+
+wilcox.test(scarf1_vector, scarf2_vector)
+
+# sirf1 vs 2 stats
+
+sirf1length <-  allfish_2017 %>% 
+  filter(group == "SIRF1") %>% 
+  select(length)
+
+sirf1_vector<- scarf1length[[1]]
+
+sirf2length <-  allfish_2017 %>% 
+  filter(group == "SIRF2") %>% 
+  select(length)
+
+sirf2_vector<- sirf2length[[1]]
+
+wilcox.test(sirf1_vector, sirf2_vector)
+
+# upstream rel vs downstream stats
+
+upstream<- allfish_2017 %>% 
+  filter(group == "SCARF1" | group == "SIRF1") %>% 
+  select(length)
+us_vector <- upstream[[1]]
+
+downstream<- allfish_2017 %>% 
+  filter(group == "SCARF2" | group == "SIRF2") %>% 
+  select(length)
+ds_vector <- downstream[[1]]
+
+
+wilcox.test(us_vector, ds_vector)
+
+# scarf vs sirf stats
+
+scarf_all <- allfish_2017 %>% 
+  filter(group == "SCARF1" | group == "SCARF2") %>% 
+  select(length)
+
+scarf_all_vector<- scarf_all[[1]]
+
+sirf_all <- allfish_2017 %>% 
+  filter(group == "SIRF1" | group == "SIRF2") %>% 
+  select(length)
+
+sirf_all_vector<- sirf_all[[1]]
+
+wilcox.test(sirf_all_vector, scarf_all_vector)
+
+
+```
+

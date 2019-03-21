@@ -1,0 +1,751 @@
+---
+title: "Diel Analysis"
+author: "Colby Hause"
+date: "July, 19, 2018"
+output: html_document
+---
+Code update: 7/19/18:Made changes starting at line 162. Made loop iterate through GPS names instead of Genrkm. For some reason looping through Genrkm made it so each rkm was being assigned the first GPSname, not its actual. 
+Also changed lines 192-194 to loops through these rec names instead of Genrkms
+
+
+Objective: The two functions below will create circular histograms showing diel movement of fish. The circular histograms represent a clock with noon at the bottom and midnight at the top. Bars represent the number of fish detected during the night (blue) and day (red) for every hour of the day.
+
+**FIRST: use change receiver names function to group recievers by GPS name (located in Transit Rate rmd)
+
+The first function creates the directon and magnitude arrow for the dataset
+The second function, make_cicular_plots, will output one plot for each site
+The thirdfunction, make_circular_plots_multi, will output one plot for a group of specified sites
+
+**NOTE: if you end up havig issues with colors of the plots (day night switching from red blue interchangably, look at how daynight is ordered ( line 268 and 435))
+
+LOAD THESE:
+```{r}
+library(gridExtra)
+library(RColorBrewer)
+library(StreamMetabolism)
+library(ggplot2)
+```
+
+This function conducts a Rayleigh's Test on the dataframe, obtaining a direction and magnitude of a arrow vector that will be displayed on the graph, adjusted according to the data:
+```{r}
+cc_rayleigh_test <- function(v_hour) {
+azi <- function(hour) { #converts hours to degrees in a circle
+  a <- (360*hour)/24
+  return(a)
+}
+
+deg_to_rad <- function(degrees) {
+  r <- degrees * pi / 180
+}
+
+rad_to_deg <- function(radians) {
+  d <- radians * 180 / pi
+}
+
+cosine_a_vector <- function(some_vector) {
+  #v should be c(1.570796, 3.141593, 4.712389, 6.283185)
+  right_vector <- c()
+  count <- 1
+  for (v in some_vector) {
+    right_vector[count] <- cos(signif(v, digits = 7))
+    #print(cos(v))
+    count <- count + 1
+  }
+  return(right_vector)
+}
+sin_a_vector <- function(some_vector) {
+  #v should be c(1.570796, 3.141593, 4.712389, 6.283185)
+  right_vector <- c()
+  count <- 1
+  for (v in some_vector) {
+    right_vector[count] <- sin(signif(v, digits = 7))
+    #print(cos(v))
+    count <- count + 1
+  }
+  return(right_vector)
+}
+
+a_hour_degrees <- sapply(v_hour, azi)
+
+a_hour_radians <- sapply(a_hour_degrees, deg_to_rad)
+
+cos_hour <- cosine_a_vector(a_hour_radians)
+
+sin_hour<- sin_a_vector(a_hour_radians)
+
+sum_cos_hour <- sum(cos_hour)
+
+sum_sin_hour <- sum(sin_hour)
+
+
+Y <- sum_sin_hour/length(v_hour)
+#print(Y)
+
+X <- sum_cos_hour/length(v_hour)
+#print(X)
+
+r <- sqrt(X^2 + Y^2)
+#print(paste("r value:", r))
+
+sina <- Y/r
+
+cosa <- X/r
+
+p <- (length(v_hour)) * (r^2)
+#print(paste("z Value:", p))
+
+
+final_radian <- atan(sina/cosa)
+direction <- rad_to_deg(final_radian)
+direction <- abs(direction)
+#print(direction)
+if (Y > 0 & X > 0) {
+  final_direction <- direction
+}
+if (Y > 0 & X < 0) {
+  final_direction <- 180 - direction
+}
+if (Y < 0 & X < 0) {
+  final_direction <- 180 + direction
+}
+if (Y < 0 & X > 0) {
+  final_direction <- 360 - direction
+}
+final_output <- c(final_direction, r)
+return(final_output)
+}
+
+######################
+
+degrees2hours <- function(degrees) { #converts degrees to hours in a circle on a 24 hr clock
+  hour <- 24*degrees/360
+  return(hour) 
+}
+
+makeColors <- function(){
+  maxColors <- 3
+  usedColors <- c()
+  possibleColors <- colorRampPalette(brewer.pal( 3 , "Set1" ) )(maxColors)
+  
+  function(values){
+    newKeys <- setdiff(values, names(usedColors))
+    newColors <- possibleColors[1:length(newKeys)]
+    usedColors.new <-  c(usedColors, newColors)
+    names(usedColors.new) <- c(names(usedColors), newKeys)
+    usedColors <<- usedColors.new
+    
+    possibleColors <<- possibleColors[length(newKeys)+1:maxColors]
+    usedColors
+  }
+} 
+
+#mkColor <- makeColors()
+
+```
+
+Change receiver names because code loops through GPS name instead of GENrkm to group receivers into plots
+```{r}
+change_receiver_names <- function(df) {
+  
+  df$'GPS Names'[df$'GPS Names' == "CC_RGD_2_J"] <- "CC_CVP/RG"
+  df$'GPS Names'[df$'GPS Names' == "CC_RGD_1_J"] <- "CC_CVP/RG"
+  df$'GPS Names'[df$'GPS Names' == "CC_RGD_4_J"] <- "CC_CVP/RG"
+  df$'GPS Names'[df$'GPS Names' == "CC_RGU1_J"] <- "CC_CVP/RG"
+  df$'GPS Names'[df$'GPS Names' == "CC_RGU2_J"] <- "CC_CVP/RG"
+  df$'GPS Names'[df$'GPS Names' == "CVP_Tank1_J"] <- "CC_CVP/RG"
+  df$'GPS Names'[df$'GPS Names' == "CVP_Tank2_J"] <- "CC_CVP/RG"
+  df$'GPS Names'[df$'GPS Names' == "CVP_Tank3_J"] <- "CC_CVP/RG"
+  df$'GPS Names'[df$'GPS Names' == "CVP_Tank4_J"] <- "CC_CVP/RG"
+  df$'GPS Names'[df$'GPS Names' == "CVPD_J"] <- "CC_CVP/RG"
+  df$'GPS Names'[df$'GPS Names' == "CVPU_J"] <- "CC_CVP/RG"
+  
+  df$'GPS Names'[df$'GPS Names' == "SJ_ParadiseCut_DN_1_3"] <- "SJ Paradise Cut"
+  
+  df$'GPS Names'[df$'GPS Names' == "Delt_ParadiseCut_1_J"] <- "Paradise Cut"
+  df$'GPS Names'[df$'GPS Names' == "Delt_ParadiseCut_2_J"] <- "Paradise Cut"
+  
+  df$'GPS Names'[df$'GPS Names' == "Delt_TC_1_J"] <- "Turner Cut"
+  df$'GPS Names'[df$'GPS Names' == "Delt_TC_2_J"] <- "Turner Cut"
+  
+  df$'GPS Names'[df$'GPS Names' == "ESB_Greenhouse Rd1_J"] <- "Greenhouse"
+  df$'GPS Names'[df$'GPS Names' == "ESB_Greenhouse Rd2_J"] <- "Greenhouse"
+  
+  df$'GPS Names'[df$'GPS Names' == "ESB_Sandy Mush1_J"] <- "Sandy Mush"
+  df$'GPS Names'[df$'GPS Names' == "ESB_Sandy Mush2_J"] <- "Sandy Mush"
+  
+  df$'GPS Names'[df$'GPS Names' == "Mar_Drain_1_J"] <- "Mariposa"
+  df$'GPS Names'[df$'GPS Names' == "Mar_Drain_2_J"] <- "Mariposa"
+  
+  df$'GPS Names'[df$'GPS Names' == "MidR_hwy4_1_J"] <- "Mid R Hwy"  
+  df$'GPS Names'[df$'GPS Names' == "MidR_hwy4_2_J"] <- "Mid R Hwy"
+  df$'GPS Names'[df$'GPS Names' == "MidR_hwy4_3_J"] <- "Mid R Hwy"
+  df$'GPS Names'[df$'GPS Names' == "MidR_hwy4_4_J"] <- "Mid R Hwy"
+  
+  df$'GPS Names'[df$'GPS Names' == "OR_HOR_1_J"] <- "OR Head OR"
+  df$'GPS Names'[df$'GPS Names' == "OR_HOR_2_J"] <- "OR Head OR"
+  df$'GPS Names'[df$'GPS Names' == "OR_HOR_3_J"] <- "OR Head OR"
+  
+  df$'GPS Names'[df$'GPS Names' == "OR_hwy4_2_J"] <- "OR Hwy"
+  df$'GPS Names'[df$'GPS Names' == "OR_hwy4_3_J"] <- "OR Hwy"
+  df$'GPS Names'[df$'GPS Names' == "OR_hwy4_4_J"] <- "OR Hwy"
+  
+  df$'GPS Names'[df$'GPS Names' == "OR_MidR_1_J"] <- "OR MR"
+  df$'GPS Names'[df$'GPS Names' == "OR_MidR_2_J"] <- "OR MR"
+  
+  df$'GPS Names'[df$'GPS Names' == "SJ_165_2_J"] <- "165"
+  df$'GPS Names'[df$'GPS Names' == "SJ_165_1_J"] <- "165"
+  
+  df$'GPS Names'[df$'GPS Names' == "SJ_BCA_1_J"] <- "BCA"
+  df$'GPS Names'[df$'GPS Names' == "SJ_BCA_2_J"] <- "BCA"
+  
+  df$'GPS Names'[df$'GPS Names' == "SJ_BlwCrowsLanding_1_J"] <- "Crows"
+  df$'GPS Names'[df$'GPS Names' == "SJ_BlwCrowsLanding_2_J"] <- "Crows"
+  
+  df$'GPS Names'[df$'GPS Names' == "SJ_BlwWGrayson_2_J"] <- "Grayson"
+  df$'GPS Names'[df$'GPS Names' == "SJ_BlwWGrayson_1_J"] <- "Grayson"
+  
+  df$'GPS Names'[df$'GPS Names' == "SJ_Durhamferry_1_J"] <- "Durham Ferry"
+  df$'GPS Names'[df$'GPS Names' == "SJ_Durhamferry_2_J"] <- "Durham Ferry"
+  
+  df$'GPS Names'[df$'GPS Names' == "SJ_Hills_1_J"] <- "Hills Ferry"
+  df$'GPS Names'[df$'GPS Names' == "SJ_Hills_2_J"] <- "Hills Ferry"
+  df$'GPS Names'[df$'GPS Names' == "SJ_Hills_RT"] <- "Hills Ferry"
+  
+  df$'GPS Names'[df$'GPS Names' == "SJ_HOR_1_J"] <- "Head OR"
+  df$'GPS Names'[df$'GPS Names' == "SJ_HOR_2_J"] <- "Head OR"
+  
+  df$'GPS Names'[df$'GPS Names' == "SJ_Howard_1_J"] <- "Howard"
+  df$'GPS Names'[df$'GPS Names' == "SJ_Howard_2_J"] <- "Howard"
+  
+  df$'GPS Names'[df$'GPS Names' == "SJ_JP_1_J"] <- "Jersey Point"
+  df$'GPS Names'[df$'GPS Names' == "SJ_JP_2_J"] <- "Jersey Point"
+  df$'GPS Names'[df$'GPS Names' == "SJ_JP_3_J"] <- "Jersey Point"
+  df$'GPS Names'[df$'GPS Names' == "SJ_JP_4_J"] <- "Jersey Point"
+  df$'GPS Names'[df$'GPS Names' == "SJ_JP_5_J"] <- "Jersey Point"
+  df$'GPS Names'[df$'GPS Names' == "SJ_JP_6_J"] <- "Jersey Point"
+  df$'GPS Names'[df$'GPS Names' == "SJ_JP_7_J"] <- "Jersey Point"
+  df$'GPS Names'[df$'GPS Names' == "SJ_JP_8_J"] <- "Jersey Point"
+  
+  df$'GPS Names'[df$'GPS Names' == "SJ_MAC_1_J"] <- "MAC"
+  df$'GPS Names'[df$'GPS Names' == "SJ_MAC_2_J"] <- "MAC"
+  df$'GPS Names'[df$'GPS Names' == "SJ_MAC_3_J"] <- "MAC"
+  
+  df$'GPS Names'[df$'GPS Names' == "SJ_MF1_J"] <- "Medford"
+  df$'GPS Names'[df$'GPS Names' == "SJ_MF2_J"] <- "Medford"
+  df$'GPS Names'[df$'GPS Names' == "SJ_MF3_J"] <- "Medford"
+  df$'GPS Names'[df$'GPS Names' == "SJ_MF4_J"] <- "Medford"
+  
+  df$'GPS Names'[df$'GPS Names' == "SJ_Moss_2_J"] <- "Mossdale"
+  df$'GPS Names'[df$'GPS Names' == "SJ_Moss_1_J"] <- "Mossdale"
+  
+  df$'GPS Names'[df$'GPS Names' == "SJ_SJC_1_J"] <- "SJC"
+  df$'GPS Names'[df$'GPS Names' == "SJ_SJC_2_J"] <- "SJC"
+  df$'GPS Names'[df$'GPS Names' == "SJ_SJC_3_J"] <- "SJC"
+  df$'GPS Names'[df$'GPS Names' == "SJ_SJC_4_J"] <- "SJC"
+  
+  df$'GPS Names'[df$'GPS Names' == "SJ_SJG_1_J"] <- "SJG"
+  df$'GPS Names'[df$'GPS Names' == "SJ_SJG_2_J"] <- "SJG"
+  df$'GPS Names'[df$'GPS Names' == "SJ_SJG_3_J"] <- "SJG"
+  df$'GPS Names'[df$'GPS Names' == "SJ_SJG_4_J"] <- "SJG"
+  
+  df$'GPS Names'[df$'GPS Names' == "Chipps1.1"] <- "Chipps"
+  df$'GPS Names'[df$'GPS Names' == "Chipps1.2"] <- "Chipps"
+  df$'GPS Names'[df$'GPS Names' == "Chipps1.3"] <- "Chipps"
+  df$'GPS Names'[df$'GPS Names' == "Chipps1.4"] <- "Chipps"
+  df$'GPS Names'[df$'GPS Names' == "Chipps1.5"] <- "Chipps"
+  df$'GPS Names'[df$'GPS Names' == "Chipps2.1"] <- "Chipps"
+  df$'GPS Names'[df$'GPS Names' == "Chipps2.2"] <- "Chipps"
+  df$'GPS Names'[df$'GPS Names' == "Chipps2.3"] <- "Chipps"
+  df$'GPS Names'[df$'GPS Names' == "Chipps2.4"] <- "Chipps"
+  df$'GPS Names'[df$'GPS Names' == "Chipps2.5"] <- "Chipps"
+  
+  df$'GPS Names'[df$'GPS Names' == "GG1"] <- "Golden Gate"
+  df$'GPS Names'[df$'GPS Names' == "GG2.1"] <- "Golden Gate"
+  df$'GPS Names'[df$'GPS Names' == "GG3.1"] <- "Golden Gate"
+  df$'GPS Names'[df$'GPS Names' == "GG4"] <- "Golden Gate"
+  df$'GPS Names'[df$'GPS Names' == "GG5.1"] <- "Golden Gate"
+  df$'GPS Names'[df$'GPS Names' == "GG6"] <- "Golden Gate"
+  df$'GPS Names'[df$'GPS Names' == "GG7"] <- "Golden Gate"
+  df$'GPS Names'[df$'GPS Names' == "GG7.5"] <- "Golden Gate"
+  df$'GPS Names'[df$'GPS Names' == "GG8"] <- "Golden Gate"
+  df$'GPS Names'[df$'GPS Names' == "GG9"] <- "Golden Gate"
+  
+  
+  
+  df$'GPS Names'[df$'GPS Names' == "Benicia1"] <- "Benicia"
+  df$'GPS Names'[df$'GPS Names' == "Benicia2"] <- "Benicia"
+  df$'GPS Names'[df$'GPS Names' == "Benicia3"] <- "Benicia"
+  df$'GPS Names'[df$'GPS Names' == "Benicia4"] <- "Benicia"
+  df$'GPS Names'[df$'GPS Names' == "Benicia5"] <- "Benicia"
+  df$'GPS Names'[df$'GPS Names' == "Benicia6"] <- "Benicia"
+  df$'GPS Names'[df$'GPS Names' == "Benicia7"] <- "Benicia"
+  df$'GPS Names'[df$'GPS Names' == "Benicia8"] <- "Benicia"
+  
+  df$'GPS Names'[df$'GPS Names' == "AntiochBr09 "] <- "Antioch"
+  df$'GPS Names'[df$'GPS Names' == "AntiochBr11 "] <- "Antioch"
+  df$'GPS Names'[df$'GPS Names' == "AntiochBr13 "] <- "Antioch"
+  df$'GPS Names'[df$'GPS Names' == "AntiochBr15 "] <- "Antioch"
+  df$'GPS Names'[df$'GPS Names' == "AntiochBr17 "] <- "Antioch"
+  df$'GPS Names'[df$'GPS Names' == "AntiochBr18 "] <- "Antioch"
+  df$'GPS Names'[df$'GPS Names' == "AntiochBr19 "] <- "Antioch"
+  df$'GPS Names'[df$'GPS Names' == "AntiochBr20 "] <- "Antioch"
+  df$'GPS Names'[df$'GPS Names' == "AntiochN "] <- "Antioch"
+  
+
+  df$'GPS Names'[df$'GPS Names' == "DeckrIs4"] <- "Decker"
+  df$'GPS Names'[df$'GPS Names' == "DeckrIs1"] <- "Decker"
+  
+  
+  return(df)
+}
+
+
+```
+
+This function will output one circular histogram plot per "site". These sites are groups by general rkm, so that 4 recievers at one location are all grouped and considered one site. 
+df_detections = a csv of all you detections after you have run them through a predator filter/ gone through each rkm plot and deleted the bad detection out of the access database. In the csv include the columns: RecSN, dtf, Hex, GPS Names, Genrkm, and Rel_group. You will most like run two csvs through this function, group 1 and group 2
+```{r}
+make_circular_plots <- function(df_detections, pdf_name) {
+  pdf(paste(pdf_name, ".pdf", sep = "" ))
+  red_blue <- scales::seq_gradient_pal('red', 'blue')(seq(0,1,length.out=2))
+  df_initial_detections <- NULL
+  all_tags <- unique(df_detections$Hex)
+  #rec_names <- unique(df_detections$'GPS Names')
+  for (tag in all_tags) {                     # Tells the loop that it is going to pull out the rows of the det dfs based on the list in the AllTags vector (starting with first tag)
+    #print(tag)                              # prints the tag you are on
+    ind_tag <- subset(df_detections, df_detections$Hex == tag)     # Takes the hex column in df det, pulls out the rows of the tag code for that iteration- assigns this to df ind_tag
+    allrkm <- unique(ind_tag$Genrkm)
+    print(allrkm)
+    rec_names <- unique(ind_tag$'GPS Names')
+    print(rec_names)
+    if (nrow(ind_tag) > 0) {                   # continues loop if there is a tag detection present 
+      for(name in rec_names) {                  # Tells the loop to pull out rows grouped by GPS name from whatever tag it is on in the AllTags vector 
+        #print(rkm)                       # Prints the GPS name that is on
+        ind_rec <- subset(ind_tag, ind_tag$'GPS Names' == name)  #Tells the loop to pull out rows grouped by GPS name from whatever tag it is on in the AllTags vector- puts into df ind_rec
+        rec_name <- ind_rec$'GPS Names'[1]
+        print(rec_name)
+        if (nrow(ind_rec) > 0) {                   # Stops Loop if there is no detection at site
+          first_det <- min(ind_rec$dtf)              # takes only the the min dtf in df ind_rec, which is the first detection of that tage at that site
+          group <- ind_rec$Rel_group[1]           #takes the release group of the tag
+          Genrkm <- ind_rec$Genrkm[1]
+          #for (rec in rec_names) {
+          #print(rec)
+          #receiver <- subset(df_detections, df_detections$'GPS Names' == rec)
+          #print(receiver)
+          #}
+          df_initial_detections = rbind(df_initial_detections, data.frame(group, rec_name, tag, Genrkm, first_det))    #Appends all data to df_Grp1/2 Detects
+        }
+      }
+    }
+  }
+  df_initial_detections_test <<- df_initial_detections
+  
+  #this line rounds df_initial_detections to the nearest hour:
+  df_initial_detections$round_det <- format(round(df_initial_detections$first_det, units = "hours"), format ="%H")
+  test_df <<- df_initial_detections
+  
+  
+  #Now we have a data.frame with the receiver and first time (rounded)
+  #Need to determine the number of instances (detections) associated with each site.
+  l_all_names <- unique(df_initial_detections$rec_name)
+  # site should go to rkm and df_firsttime <- df initital dets
+  for (n in l_all_names) {
+    print(n)
+    test_site <- subset(df_initial_detections, rec_name == n)
+    receiver <- test_site$rec_name[1]        # pulls out receiver name for title of plot in ggplot
+    print(receiver)
+    #receiver <- substr(receiver,1, nchar(as.character(receiver))-4)     # all this does is take off the _#_J in the title of receiver 
+    #test_site$rounded_time <- as.numeric(as.character(test_site$rounded_time)) #changes column of test_site to numeric values
+    unique_tags <- unique(test_site$tag)
+    pre_df_num_instances <- NULL
+    #all_hours <- unique(test_site$rounded_time)
+    all_tags <- unique(test_site$tag)
+    #print(nrow(test_site))
+    if (nrow(test_site) > 0) {
+      first_date <- min(test_site$first_det)
+      last_date <- max(test_site$first_det)
+      
+      mid_date <- as.POSIXct((as.numeric(first_date) + as.numeric(last_date))/2, origin = '1970-01-01')
+      format_middle_date <- format(mid_date, '%Y/%m/%d')
+      df_sunrise_sunset <- sunrise.set(lat = 37.9577, long = -121.2908, timezone = "America/Los_Angeles", date = format_middle_date) #GPS Points are for STOCKTON
+      rounded_sunrise <- format(round(df_sunrise_sunset$sunrise[1], units = "hours"), format ="%H")
+      rounded_sunset <- format(round(df_sunrise_sunset$sunset[1], units = "hours"), format ="%H")
+      
+      for (t in all_tags) {
+        #print(hour)
+        #ind_hour <- subset(test_site, rounded_time == hour)
+        ind_tag <- subset(test_site, tag == t)
+        min_hour <- min(ind_tag$round_det)
+        pre_df_num_instances = rbind(pre_df_num_instances, data.frame(t, min_hour))
+      }
+      #print("HERE")
+      
+      #print(pre_df_num_instances)
+      pre_df_num_instances$min_hour <- as.integer(as.character(pre_df_num_instances$min_hour))
+      all_hours <- c(unique(pre_df_num_instances$min_hour))
+      
+      df_num_instances <- NULL
+      for (hour in all_hours) {
+        #print(hour)
+        #print(class(hour))
+        daynight <- NA
+        ind_hour <- subset(pre_df_num_instances, min_hour == hour)
+        ind_number <- length(unique(ind_hour$t))
+        int_sunrise <- as.integer(rounded_sunrise)
+        int_sunset <- as.integer(rounded_sunset)
+        #print('Sunrise and Sunset')
+        #print(int_sunrise)
+        #print(class(int_sunrise))
+        #print(int_sunset)
+        #print(class(int_sunset))
+        if (hour >= int_sunrise & hour <= int_sunset) { #if hour >= 6 and hour <= 19
+          daynight <- "Day"
+          df_num_instances = rbind(df_num_instances, data.frame(hour, ind_number, daynight))
+          
+        }
+        else {
+          daynight <- "Night"
+          #print(daynight)
+          df_num_instances = rbind(df_num_instances, data.frame(hour, ind_number, daynight))
+        }
+      }
+      #print(df_num_instances)
+      hour_vector <- c(pre_df_num_instances$min_hour)  #This is the vector we use to determine rayleighs r vector
+      #print(hour_vector)
+      #print("here")
+      ray_vector <- cc_rayleigh_test(hour_vector)
+      #print("here")
+      x_position <- degrees2hours(ray_vector[1])
+      magnitude <- ray_vector[2]
+      df_ray <- data.frame(x_position, magnitude)
+      
+      
+      df_day <- subset(df_num_instances, daynight == "Day")
+      df_night <- subset(df_num_instances, daynight == "Night")
+      day_number <- sum(df_day$ind_number)
+      night_number <- sum(df_night$ind_number)
+      total_number <- sum(df_num_instances$ind_number)
+      #df_night_test <<- df_night
+      
+      #print(paste("Plotting Circular Graph for", site))
+      
+      df_num_instances$hour[df_num_instances$hour == 0] <- 24
+      df_num_instances_test <<- df_num_instances
+      df_num_instances$daynight <- as.character(df_num_instances$daynight)
+      #df_num_instances<- arrange(df_num_instances,  (daynight))
+      df_num_instances <- df_num_instances[order(df_num_instances$daynight, decreasing = FALSE), ]
+      #print(df_num_instances)
+      
+      #ind_number should be the number of total detections at an hour
+      
+      if (max(df_num_instances$ind_number) <= 20) {
+        circular_plot <- ggplot(df_num_instances, aes(x=factor(hour), y = ind_number, fill = daynight)) + geom_bar(stat = "identity") +
+          geom_hline(yintercept = seq(0,max(df_num_instances$ind_number), by = 1)) +
+          geom_segment(data = df_ray, aes(x = x_position, y = 0, xend = x_position, yend = magnitude * max(df_num_instances$ind_number)), arrow = arrow(type = "closed", length = unit(.2, "cm"))) +
+          coord_polar(theta = "x", start = .13) +
+          scale_x_discrete("Hour", limits = c(1:24), breaks = seq(1, 24, by=1)) +
+          scale_y_continuous("Number of Fish" , breaks = seq(0, max(df_num_instances$ind_number), by=1)) +
+          ggtitle(receiver) +
+          labs(fill = paste("N = ", length(unique_tags), '\n', round(day_number/total_number*100), '% Day', '\n', round(night_number/total_number*100), "% Night")) +
+          scale_fill_manual(values = red_blue )
+        plot(circular_plot)
+      }
+      
+      if (max(df_num_instances$ind_number) > 20 & max(df_num_instances$ind_number) <= 50){
+        circular_plot <- ggplot(df_num_instances, aes(x=factor(hour), y = ind_number, fill = daynight)) + geom_bar(stat = "identity") +
+          geom_hline(yintercept = seq(0,max(df_num_instances$ind_number), by = 2)) +
+          geom_segment(data = df_ray, aes(x = x_position, y = 0, xend = x_position, yend = magnitude * max(df_num_instances$ind_number)), arrow = arrow(type = "closed", length = unit(.2, "cm"))) +
+          coord_polar(theta = "x", start = .13) +
+          scale_x_discrete("Hour", limits = c(1:24), breaks = seq(1, 24, by=1)) +
+          scale_y_continuous("Number of Fish" , breaks = seq(0, max(df_num_instances$ind_number), by=2)) +
+          ggtitle(receiver) +
+          labs(fill = paste("N = ", length(unique_tags), '\n', round(day_number/total_number*100), '% Day', '\n', round(night_number/total_number*100), "% Night")) +
+          scale_fill_manual(values = red_blue )
+        plot(circular_plot)
+      }
+      
+      if (max(df_num_instances$ind_number) > 75) {
+        #print(magnitude)
+        #print(max(df_num_instances$ind_number))
+        circular_plot <- ggplot(df_num_instances, aes(x=factor(hour), y = ind_number, fill = daynight)) + geom_bar(stat = "identity") +
+          geom_hline(yintercept = seq(0,max(df_num_instances$ind_number), by = 25)) +
+          geom_segment(data = df_ray, aes(x = x_position, y = 0, xend = x_position, yend = magnitude * max(df_num_instances$ind_number)), arrow = arrow(type = "closed", length = unit(.2, "cm"))) +
+          coord_polar(theta = "x", start = .13) +
+          scale_x_discrete("Hour", limits = c(1:24), breaks = seq(1, 24, by=1)) +
+          scale_y_continuous("Number of Fish" , breaks = seq(0, max(df_num_instances$ind_number), by=25)) +
+          ggtitle(receiver) +
+          labs(fill = paste("N = ", length(unique_tags), '\n', round(day_number/total_number*100), '% Day', '\n', round(night_number/total_number*100), "% Night")) +
+          scale_fill_manual(values = red_blue)
+        plot(circular_plot)
+      }
+    }
+  }
+  dev.off()
+}
+
+
+```
+
+
+Run-through code:
+```{r}
+#make_circular_plots(#df with all detections, pdf_name = "All Sites")
+
+```
+
+
+This function will make one plot for multiple sites combined, for example, restoration area sites or delta sites. 
+df_detections = a subset of you master detection file by the site that you want.
+```{r}
+make_circular_plots_multi <- function(df_detections, pdf_name, group_title) {
+  pdf(paste(pdf_name, ".pdf", sep = "" ))
+  red_blue <- scales::seq_gradient_pal('red', 'blue')(seq(0,1,length.out=2))
+  df_initial_detections <- NULL
+  all_tags <- unique(df_detections$Hex)
+  for (tag in all_tags) { # Tells the loop that it is going to pull out the rows of the det dfs based on the list in the AllTags vector (starting with first tag)
+    print(tag)                              # prints the tag you are on
+    ind_tag <- subset(df_detections, df_detections$Hex == tag)     # Takes the hex column in df det, pulls out the rows of the tag code for that iteration- assigns this to df ind_tag
+    all_names <- unique(ind_tag$'GPS Names')
+    if (nrow(ind_tag) > 0) {                   # continues loop if there is a tag detection present 
+      for(name in all_names) {                  # Tells the loop to pull out rows grouped by GPS name from whatever tag it is on in the AllTags vector 
+        print(name)                       # Prints the GPS name that is on
+        ind_rec <- subset(ind_tag, ind_tag$'GPS Names' == name)  #Tells the loop to pull out rows grouped by GPS name from whatever tag it is on in the AllTags vector- puts into df ind_rec
+        if (nrow(ind_rec) > 0) {                   # Stops Loop if there is no detection at site
+          first_det <- min(ind_rec$dtf)              # takes only the the min dtf in df ind_rec, which is the first detection of that tage at that site
+          group <- ind_rec$Rel_group[1]           #takes the release group of the tag
+          Genrkm <- ind_rec$Genrkm[1]
+          df_initial_detections = rbind(df_initial_detections, data.frame(group, tag, Genrkm, first_det))    #Appends all data to df_Grp1/2 Detects
+        }
+      }
+    }
+  }
+  df_initial_detections_test_2017 <<- df_initial_detections
+  
+  
+  #this line rounds df_initial_detections to the nearest hour:
+  df_initial_detections$round_det <- format(round(df_initial_detections$first_det, units = "hours"), format ="%H")
+  test_df <<- df_initial_detections
+  
+  
+  #Now we have a data.frame with the receiver and first time (rounded)
+  #Need to determine the number of instances (detections) associated with each site.
+  
+  # site should go to rkm and df_firsttime <- df initital dets
+  test_site <- df_initial_detections
+  #test_site$rounded_time <- as.numeric(as.character(test_site$rounded_time)) #changes column of test_site to numeric values
+  unique_tags <- unique(test_site$tag)
+  #all_hours <- unique(test_site$rounded_time)
+  all_tags <- unique(test_site$tag)
+  #print(nrow(test_site))
+  if (nrow(test_site) > 0) {
+    first_date <- min(test_site$first_det)
+    last_date <- max(test_site$first_det)
+    
+    mid_date <- as.POSIXct((as.numeric(first_date) + as.numeric(last_date))/2, origin = '1970-01-01')
+    format_middle_date <- format(mid_date, '%Y/%m/%d')
+    df_sunrise_sunset <- sunrise.set(lat = 37.9577, long = -121.2908, timezone = "America/Los_Angeles", date = format_middle_date) #GPS Points are for STOCKTON
+    rounded_sunrise <- format(round(df_sunrise_sunset$sunrise[1], units = "hours"), format ="%H")
+    rounded_sunset <- format(round(df_sunrise_sunset$sunset[1], units = "hours"), format ="%H")
+    
+    
+    #print(df_initial_detections)
+    df_initial_detections$round_det <- as.integer(as.character(df_initial_detections$round_det))
+    all_hours <- c(unique(df_initial_detections$round_det))
+    
+    df_num_instances <- NULL
+    for (hour in all_hours) {
+      print(hour)
+      print(class(hour))
+      daynight <- NA
+      ind_hour <- subset(df_initial_detections, round_det == hour)
+      #ind_number <- length(unique(ind_hour$t))
+      ind_number <- nrow(ind_hour)
+      int_sunrise <- as.integer(rounded_sunrise)
+      int_sunset <- as.integer(rounded_sunset)
+      print('Sunrise and Sunset')
+      print(int_sunrise)
+      print(class(int_sunrise))
+      print(int_sunset)
+      print(class(int_sunset))
+      if (hour >= int_sunrise & hour <= int_sunset) { #if hour >= 6 and hour <= 19
+        daynight <- "Day"
+        df_num_instances = rbind(df_num_instances, data.frame(hour, ind_number, daynight))
+        
+      }
+      else {
+        daynight <- "Night"
+        #print(daynight)
+        df_num_instances = rbind(df_num_instances, data.frame(hour, ind_number, daynight))
+      }
+    }
+    #print(df_num_instances)
+    #print("here")
+    hour_vector <- c(df_initial_detections$round_det)  #This is the vector we use to determine rayleighs r vector
+    print(hour_vector)
+    print("here")
+    ray_vector <- cc_rayleigh_test(hour_vector)
+    #print("here")
+    x_position <- degrees2hours(ray_vector[1])
+    magnitude <- ray_vector[2]
+    df_ray <- data.frame(x_position, magnitude)
+    
+    
+    df_day <- subset(df_num_instances, daynight == "Day")
+    df_night <- subset(df_num_instances, daynight == "Night")
+    day_number <- sum(df_day$ind_number)
+    night_number <- sum(df_night$ind_number)
+    total_number <- sum(df_num_instances$ind_number)
+    
+    #print(paste("Plotting Circular Graph for", site))
+    
+    df_num_instances$hour[df_num_instances$hour == 0] <- 24
+    df_num_instances$daynight <- as.character(df_num_instances$daynight)
+    #df_num_instances<- arrange(df_num_instances, desc(daynight))
+    df_num_instances <- df_num_instances[order(df_num_instances$daynight, decreasing = FALSE), ]
+    print("this is the total number of instances:")
+    print(total_number)
+    
+    #ind_number should be the number of total detections at an hour
+    
+    if (max(df_num_instances$ind_number) <= 20) {
+      circular_plot <- ggplot(df_num_instances, aes(x=factor(hour), y = ind_number, fill = daynight)) + geom_bar(stat = "identity") +
+        geom_hline(yintercept = seq(0,max(df_num_instances$ind_number), by = 1)) +
+        geom_segment(data = df_ray, aes(x = x_position, y = 0, xend = x_position, yend = magnitude * max(df_num_instances$ind_number)), arrow = arrow(type = "closed", length = unit(.2, "cm"))) +
+        coord_polar(theta = "x", start = .13) +
+        scale_x_discrete("Hour", limits = c(1:24), breaks = seq(1, 24, by=1)) +
+        scale_y_continuous("Number of Fish" , breaks = seq(0, max(df_num_instances$ind_number), by=1)) +
+        ggtitle(group_title) +
+        labs(fill = paste("N = ", length(unique_tags), '\n', round(day_number/total_number*100), '% Day', '\n', round(night_number/total_number*100), "% Night")) +
+        scale_fill_manual(values = red_blue)
+      plot(circular_plot)
+    }
+    
+    if (max(df_num_instances$ind_number) > 20 & max(df_num_instances$ind_number) <= 30){
+      circular_plot <- ggplot(df_num_instances, aes(x=factor(hour), y = ind_number, fill = daynight)) + geom_bar(stat = "identity") +
+        geom_hline(yintercept = seq(0,max(df_num_instances$ind_number), by = 2)) +
+        geom_segment(data = df_ray, aes(x = x_position, y = 0, xend = x_position, yend = magnitude * max(df_num_instances$ind_number)), arrow = arrow(type = "closed", length = unit(.2, "cm"))) +
+        coord_polar(theta = "x", start = .13) +
+        scale_x_discrete("Hour", limits = c(1:24), breaks = seq(1, 24, by=1)) +
+        scale_y_continuous("Number of Fish" , breaks = seq(0, max(df_num_instances$ind_number), by=2)) +
+        ggtitle(group_title) +
+        labs(fill = paste("N = ", length(unique_tags), '\n', round(day_number/total_number*100), '% Day', '\n', round(night_number/total_number*100), "% Night")) +
+        scale_fill_manual(values = red_blue)
+      plot(circular_plot)
+    }
+    
+    if (max(df_num_instances$ind_number) > 30) {
+      print(magnitude)
+      print(max(df_num_instances$ind_number))
+      circular_plot <- ggplot(df_num_instances, aes(x=factor(hour), y = ind_number, fill = daynight)) + geom_bar(stat = "identity") +
+        geom_hline(yintercept = seq(0,max(df_num_instances$ind_number), by = 10)) +
+        geom_segment(data = df_ray, aes(x = x_position, y = 0, xend = x_position, yend = magnitude * max(df_num_instances$ind_number)), arrow = arrow(type = "closed", length = unit(.2, "cm"))) +
+        coord_polar(theta = "x", start = .13) +
+        scale_x_discrete("Hour", limits = c(1:24), breaks = seq(1, 24, by=1)) +
+        scale_y_continuous("Number of Fish" , breaks = seq(0, max(df_num_instances$ind_number), by= 10)) +
+        ggtitle(group_title) +
+        labs(fill = paste("N = ", length(unique_tags), '\n', round(day_number/total_number*100), '% Day', '\n', round(night_number/total_number*100), "% Night")) +
+        scale_fill_manual(values = red_blue)
+      plot(circular_plot)
+    }
+  }
+  dev.off()
+}
+
+```
+
+Run through code:
+```{r}
+#make subsetted detection file:
+df_detections = titleofgroup <- subset(#full detection file, Genrkm == | Genrkm == | etc.. )
+  
+make_circular_plots_multi(#subsetted detection file, "pdf name", "title of group of receivers")
+  
+  
+#These are the groups we made for the 2017 model:
+                                                  #GROUP1 FISH
+resto_dets_1<- subset(diel_group1_renamed, diel_group1_renamed$`GPS Names` == "Sandy Mush" | diel_group1_renamed$`GPS Names` == "Mariposa" | 
+                       diel_group1_renamed$`GPS Names` == "Greenhouse" | diel_group1_renamed$`GPS Names` == "165") 
+length(unique(resto_dets_1$Hex))
+
+exit_resto_1 <- subset(diel_group1_renamed, diel_group1_renamed$`GPS Names` == "Hills Ferry")
+length(unique(exit_resto_1$Hex))
+
+lower_SJ_1 <- subset(diel_group1_renamed, diel_group1_renamed$`GPS Names` == "Grayson" | diel_group1_renamed$`GPS Names` == "Crows" )
+length(unique(lower_SJ_1$Hex))
+
+enter_delta_1 <- subset(diel_group1_renamed, diel_group1_renamed$`GPS Names` == "Durham Ferry")
+length(unique(enter_delta_1$Hex))
+
+delta_all_1 <- subset(diel_group1_renamed, diel_group1_renamed$`GPS Names` == "BCA"| diel_group1_renamed$`GPS Names` == "Paradise Cut" | 
+                      diel_group1_renamed$`GPS Names` == "SJ Paradise Cut" | diel_group1_renamed$`GPS Names` == "Mossdale" |
+                      diel_group1_renamed$`GPS Names` ==  "Head OR" | diel_group1_renamed$`GPS Names` == "OR Head OR" |
+                      diel_group1_renamed$`GPS Names` ==  " OR MR" | diel_group1_renamed$`GPS Names` ==  "CC_CVP/RG" |
+                      diel_group1_renamed$`GPS Names` == "Howard" | diel_group1_renamed$`GPS Names` ==  "Mid R Hwy" |
+                      diel_group1_renamed$`GPS Names` ==  "OR Hwy" | diel_group1_renamed$`GPS Names` ==  "SJG" |
+                      diel_group1_renamed$`GPS Names` == "SJC" | diel_group1_renamed$`GPS Names` == " Turner Cut" |
+                      diel_group1_renamed$`GPS Names` ==  "MAC" | diel_group1_renamed$`GPS Names` == "Medford" |
+                      diel_group1_renamed$`GPS Names` ==  "Jersey Point" | diel_group1_renamed$`GPS Names` == "Antioch" |
+                      diel_group1_renamed$`GPS Names` == "Decker")
+length(unique(delta_all_1$Hex))
+
+exit_delta_1 <- subset(diel_group1_renamed, diel_group1_renamed$`GPS Names` ==  "Chipps")
+length(unique(exit_delta_1$Hex))
+
+bay_1 <- subset(diel_group1_renamed, diel_group1_renamed$`GPS Names` == "Benicia")
+length(unique(bay_1$Hex))
+
+enter_ocean_1<- subset(diel_group1_renamed, diel_group1_renamed$`GPS Names` == "Golden Gate")
+length(unique(enter_ocean_1$Hex))
+
+                                                      #GROUP2 FISH
+
+enter_delta_2 <- subset(diel_group2_renamed, diel_group2_renamed$`GPS Names` == "Durham Ferry")
+length(unique(enter_delta_2$Hex))
+
+delta_all_2 <- subset(diel_group2_renamed, diel_group2_renamed$`GPS Names` == "BCA"| diel_group2_renamed$`GPS Names` == "Paradise Cut" | 
+                      diel_group2_renamed$`GPS Names` == "SJ Paradise Cut" | diel_group2_renamed$`GPS Names` == "Mossdale" |
+                      diel_group2_renamed$`GPS Names` ==  "Head OR" | diel_group2_renamed$`GPS Names` == "OR Head OR" |
+                      diel_group2_renamed$`GPS Names` ==  " OR MR" | diel_group2_renamed$`GPS Names` ==  "CC_CVP/RG" |
+                      diel_group2_renamed$`GPS Names` == "Howard" | diel_group2_renamed$`GPS Names` ==  "Mid R Hwy" |
+                      diel_group2_renamed$`GPS Names` ==  "OR Hwy" | diel_group2_renamed$`GPS Names` ==  "SJG" |
+                      diel_group2_renamed$`GPS Names` == "SJC" | diel_group2_renamed$`GPS Names` == " Turner Cut" |
+                      diel_group2_renamed$`GPS Names` ==  "MAC" | diel_group2_renamed$`GPS Names` == "Medford" |
+                      diel_group2_renamed$`GPS Names` ==  "Jersey Point" | diel_group2_renamed$`GPS Names` == "Antioch" |
+                      diel_group2_renamed$`GPS Names` == "Decker")
+length(unique(delta_all_2$Hex))
+
+exit_delta_2 <- subset(diel_group2_renamed, diel_group2_renamed$`GPS Names` ==  "Chipps")
+length(unique(exit_delta_2$Hex))
+
+bay_2 <- subset(diel_group2_renamed, diel_group2_renamed$`GPS Names` == "Benicia")
+length(unique(bay_2$Hex))
+
+enter_ocean_2 <- subset(diel_group2_renamed, diel_group2_renamed$`GPS Names` == "Golden Gate")
+length(unique(enter_ocean_2$Hex))
+
+
+
+#MULTI-SITE PLOTS:
+
+#GROUP1 FISH
+make_circular_plots_multi(resto_dets_1, pdf_name = "Group 1 Restoration Area", " Group 1 Fish through Restoration Area")
+make_circular_plots_multi(exit_resto_1, pdf_name = "Group 1 Exit Resto", "Group 1 Fish exiting Restoration Area")
+make_circular_plots_multi(lower_SJ_1, pdf_name = "Group 1 Lower SJ", "Group 1 Fish through the Lower San Joaquin")
+make_circular_plots_multi(enter_delta_1, pdf_name = "Group 1 Entering Delta", "Group 1 Fish entering Delta")
+make_circular_plots_multi(delta_all_1, pdf_name = "Group 1 through Delta", "Group 1 Fish through Delta")
+make_circular_plots_multi(exit_delta_1, pdf_name = "Group 1 Exit Delta", "Group 1 Fish exiting Delta")
+make_circular_plots_multi(bay_1, pdf_name = "Group 1 Bay", "Group 1 Fish through Bay")
+make_circular_plots_multi(enter_ocean_1, pdf_name = "Group 1 Enter Ocean", "Group 1 Fish entering Ocean")
+
+
+#GROUP 2 FISH
+make_circular_plots_multi(enter_delta_2, pdf_name = "Group 2 Entering Delta", "Group 2 Fish entering Delta")
+make_circular_plots_multi(delta_all_2, pdf_name = "Group 2 through Delta", "Group 2 Fish through Delta")
+make_circular_plots_multi(exit_delta_2, pdf_name = "Group 2 Exit Delta", "Group 2 Fish exiting Delta")
+make_circular_plots_multi(bay_2, pdf_name = "Group 2 Bay", "Group 2 Fish through Bay")
+make_circular_plots_multi(enter_ocean_2, pdf_name = "Group 2 Enter Ocean", "Group 2 Fish entering Ocean")
+
+
+
+```
+

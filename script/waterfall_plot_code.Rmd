@@ -1,0 +1,89 @@
+---
+title: "Waterfall Plots"
+author: "Colby Hause"
+date: "June 26, 2018"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(ggplot2)
+
+```
+
+First: From access make a query that pulls: Relative group, date tagged, Hex, RecSN, GPS Names, rKM, and dtf and save as a csv- name this [year]AllFishGroups. 
+
+Function to plot rkm over time of ech fish from specified group. All rkm plots will show up on one graph.
+df = your dataframe of fish by group
+df_tag_list = your dataframe again, unless you want to look at specific tags, then upload another list
+```{r setup, include=FALSE}
+
+plot_all_rkm_time_jsats <- function(df, df_tag_list,tag_colname, str_start_datetime, str_end_datetime, high_rkm, low_rkm, pdf_name, gg_title, file_location, initial_rkm = 0) {
+  pdf(paste(file_location, pdf_name, ".pdf", sep = "" )) 
+  #df_edit <- subset(df, rkm > initial_rkm)   use this line for reguar rkm
+  df_edit <- subset(df, Genrkm > initial_rkm)
+  df_edit <- subset(df_edit, dtf > str_start_datetime & dtf < str_end_datetime)
+  all_tags <- unique(df_tag_list[[tag_colname]])
+  df_edit_time <- df_edit[order(df_edit$dtf), ]
+  first_time <- df_edit_time$dtf[1]
+  last_time <- df_edit_time$dtf[nrow(df_edit_time)]
+  first_det <- df_edit$dtf[1]
+  last_det <- df_edit$dtf[nrow(df_edit)]
+  
+  #fish_move <- ggplot(df_edit, aes(x=dtf, y=rkm, color = Hex)) +  use this line for regular rkm
+  fish_move <- ggplot(df_edit, aes(x=dtf, y=Genrkm, color = Hex)) +
+    geom_point(size = .25) + geom_line(size = .25) +
+    ggtitle(paste(gg_title)) +
+    xlab("Time After Release") +
+    #ylab("River Kilometer") +
+    theme(plot.title = element_text(size = 10), legend.position = "none") +
+    scale_x_datetime(date_breaks = "5 days") +
+    scale_y_discrete(name = "River Kilometer", limits = seq(low_rkm, high_rkm, by=10)) +
+    coord_cartesian(ylim = c(low_rkm, high_rkm)) +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1))
+  plot(fish_move)
+  dev.off()
+}
+
+
+#example of set up for plot_all_rkm_time_jsats function:
+#plot_all_rkm_time_jsats(new_group1, new_group1, tag_colname = "Hex", str_start_datetime="2017-01-01 00:00:00", str_end_datetime="2018-01-01 #00:00:00",low_rkm = 0, high_rkm = 320, pdf_name = "No Upstream over 12 km group 1", gg_title = "Upstream Release All Transmitters", #file_location = "Z://Shared//Projects//JSATS//DSP_Spring-Run Salmon//JSATS analysis//Waterfall Plots//")
+
+#plot_all_rkm_time_jsats(new_group2, new_group2, tag_colname = "Hex", str_start_datetime="2017-01-01 00:00:00", str_end_datetime="2018-01-01 #00:00:00",low_rkm = 0, high_rkm = 190, pdf_name = "No Upstream over 12 km group 2", gg_title = "Upstream Release All Transmitters", #file_location = "Z://Shared//Projects//JSATS//DSP_Spring-Run Salmon//JSATS analysis//Waterfall Plots//")
+```
+
+
+To make individualrkm plots that will save as their own pdf into a specified folder:
+
+```{r}
+print_tags <- function(df, pdf_name) {
+  pdf(paste(pdf_name, ".pdf"))  # this opens the pdf
+  all_tags <- unique(df$Hex)
+  for (tag in all_tags) {
+    single_tag<- df %>% 
+      filter(Hex == tag) 
+      #p<-  ggplot(data = single_tag, aes(x = dtf, y = rkm)) + use this line for regular rkm
+      p<-  ggplot(data = single_tag, aes(x = dtf, y = Genrkm)) +
+      geom_point() +
+      geom_line() +
+      ggtitle(tag)
+    plot(p)
+  }
+  dev.off()     # this closes the pdf
+}
+```
+
+To make your diferent "group dataframes, filter out the release groups you want from the master FishByGroup csv. 
+
+```{r}
+allgroups <- read.csv( "file path of where your [year]AllFishGroups is")
+
+group1 <- allgroups %>% 
+  filter(Rel_group == "2017_SJ_SCARF1" | Rel_group == "2017_SJ_SIRF1" )
+
+group2 <- allgroups %>% 
+  filter(Rel_group == "2017_SJ_SCARF2" | Rel_group == "2017_SJ_SIRF2" )
+
+
+```
+
